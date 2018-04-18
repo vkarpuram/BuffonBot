@@ -1,5 +1,6 @@
 #!/bin/bash 
-
+sudo chmod 777 project.sh
+sudo chmod 777 launch.sh
 source ./project.sh
 
 
