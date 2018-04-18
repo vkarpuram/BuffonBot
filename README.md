@@ -14,4 +14,4 @@ chmod 777 setup.sh
 
 source project.sh (Sets ROS_PACKAGE_PATH variable)
 
-
+make (build project)
