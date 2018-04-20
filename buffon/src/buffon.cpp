@@ -33,7 +33,7 @@ using std::cout;
 using std::vector;
 using namespace std;
 
-// Global Parameters
+// Global Robot Parameters
 const float gRobotRadius = 0.18;
 const float gRobotHeight = 0.36;
 const float gEpsilon = 0.15;
@@ -51,21 +51,23 @@ float py = 240.0;
 float fx = 588.446;
 float fy = -564.227;
 
+//Determines how many baseScans will be taken
 float buildup = 0;
 float buildupScanLimit = 3; //10 ?
-//fix this tentaive / unsure
-float timeBetween = 0.1;
+float reset = 0;
+float resetLimit = 5;
 
-//sensor_msgs::point_cloud_conversion PCC;
-sensor_msgs::PointCloud baseScan; 
-sensor_msgs::PointCloud threshold;
-
-bool somethingMovedCloser = false;
-
-geometry_msgs::Point32 closestPoint;
-geometry_msgs::Point32 closestPoint2;
 
 float ballXVelocity = 0.0;
+float timeBetween = 0.1; //fix this tentaive / unsure
+
+bool somethingMovedCloser = false; //used to indicate when a new obect is closer to the robot
+
+sensor_msgs::PointCloud baseScan;// builds up a basescan for the robot to compare with  
+sensor_msgs::PointCloud threshold;
+
+geometry_msgs::Point32 closestPoint;
+geometry_msgs::Point32 closestPoint2; //measures the difference between these two to find the balls speed once the new scan has become different than the basescan
 
 Vector3f motionVector;
 
@@ -89,7 +91,7 @@ void calculateSpeed()
 	 closestPoint.z - closestPoint2.z);
 
 	ballXVelocity = motionVector.x() / timeBetween;
-	
+
 	//TODO: check this ???
 }
 
@@ -176,6 +178,8 @@ void evaluateScan(sensor_msgs::Image image)
 		ROS_INFO("Base Scan Complete");
 		closestPointInBase();
 		buildup++;
+
+		return;
 	}
 
 	if(somethingMovedCloser)
@@ -184,6 +188,7 @@ void evaluateScan(sensor_msgs::Image image)
 		findCloserPoint(points);
 		calculateSpeed();
 		
+		reset = 0;
 		return;
 	}
 
@@ -199,6 +204,13 @@ void evaluateScan(sensor_msgs::Image image)
 	}
 
 	threshold.points = newPoints;
+	reset = reset + 1;
+
+	if(reset == resetLimit)
+	{
+		buildup = 0;
+	}
+
 	findClosestInNewScan();
 }
 
@@ -206,10 +218,21 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, "BuffonBot"); // topic /camera/depth/points 
   ros::NodeHandle n;
- 
-  ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
- 
-  ros::spin();
+  
+
+  string input;
+  cout << "Type \"goalie\" for Goalie Mode\n or \n \"avoid\" for Evasion Mode!\n";
+  cin >> input;
+
+  if("goalie" == input)
+  {
+  	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
+  	ros::spin();
+  }
+  if("avoid" == input)
+  {
+
+  }
 
   return 0;
 }
