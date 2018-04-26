@@ -53,12 +53,13 @@ float fy = -564.227;
 
 //Determines how many baseScans will be taken
 float buildup = 0;
-float buildupScanLimit = 3; //10 ?
+float buildupScanLimit = 10; //10 ?
 float reset = 0;
 float resetLimit = 5;
 
-
 float ballXVelocity = 0.0;
+float distance2 = 0.0;
+float zLoc = 0.0;
 float timeBetween = 0.1; //fix this tentaive / unsure
 
 bool somethingMovedCloser = false; //used to indicate when a new obect is closer to the robot
@@ -70,6 +71,8 @@ geometry_msgs::Point32 closestPoint;
 geometry_msgs::Point32 closestPoint2; //measures the difference between these two to find the balls speed once the new scan has become different than the basescan
 
 Vector3f motionVector;
+geometry_msgs::Twist twist;
+ros::Publisher pub;
 
 void closestPointInBase()
 {
@@ -81,7 +84,73 @@ void closestPointInBase()
 			closestPoint = baseScan.points[i];
 		}
 	}	
-	ROS_INFO("x = %f", closestPoint.x);
+	//ROS_INFO("x = %f", closestPoint.x);
+}
+
+void publishTwist()
+{
+	pub.publish(twist);
+}
+
+void turn()
+{
+	ros::Time time;
+	geometry_msgs::Vector3 ang;
+
+	geometry_msgs::Vector3 lin;
+	lin.x = 0;
+	lin.y = 0;
+	lin.z = 0;
+
+	float angular_speed = 1*2*3.14/360;
+    float relative_angle = 90*2*3.14/360;
+	
+	ang.x = 0;
+	ang.y = 0;
+ 	ang.z = -abs(angular_speed);
+ 
+     
+    float t0 = time.now().toSec();
+    float current_angle = 0;
+   
+    while(current_angle < relative_angle)
+    {
+        pub.publish(twist);
+       	float t1 = time.now().toSec();
+      	current_angle = angular_speed*(t1-t0);
+	}
+
+	twist.angular.z = 0;
+	pub.publish(twist);
+
+	publishTwist();
+}
+
+void go()
+{
+	while(distance2 != 0)
+	{
+		geometry_msgs::Vector3 ang;
+		ang.x = 0;
+		ang.y = 0;
+		ang.z = 0;
+
+		geometry_msgs::Vector3 lin;
+		ang.x = 1;
+		ang.y = 0;
+		ang.z = 0;
+
+		twist.angular = ang;
+		twist.linear = lin;
+		distance2 = distance2 - 10;
+		publishTwist();
+	}
+}
+
+void createTwistTest()
+{
+	turn();
+	go();	
 }
 
 void calculateSpeed()
@@ -91,8 +160,10 @@ void calculateSpeed()
 	 closestPoint.z - closestPoint2.z);
 
 	ballXVelocity = motionVector.x() / timeBetween;
+	distance2 = closestPoint2.x;
+	zLoc = closestPoint2.z;
 
-	//TODO: check this ???
+	//createTwistTest();
 }
 
 void findClosestInNewScan()
@@ -159,7 +230,7 @@ sensor_msgs::PointCloud imageToCloud(sensor_msgs::Image image)
 
 void evaluateScan(sensor_msgs::Image image)
 { 
-	ROS_INFO("Scanning");
+	//ROS_INFO("Scanning");
 	sensor_msgs::PointCloud cloud = imageToCloud(image);
 
 	std::vector<geometry_msgs::Point32> points = cloud.points;
@@ -218,21 +289,28 @@ int main(int argc, char **argv)
 {
   ros::init(argc, argv, "BuffonBot"); // topic /camera/depth/points 
   ros::NodeHandle n;
+ 
+  
+ // cout << "Type \"goalie\" for Goalie Mode!\n or \nType\"avoid\" for Evasion Mode!\n\n";
+  //string input;
+  //cin >> input;
+
+
+  // if("goalie" == input)
+  // {
+  	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
+  	pub = n.advertise<geometry_msgs::Twist>("/cmg_Imaged_vel_mux/input/navi", 1000);
+
+  	ros::spin();
+
   
 
-  string input;
-  cout << "Type \"goalie\" for Goalie Mode\n or \n \"avoid\" for Evasion Mode!\n";
-  cin >> input;
 
-  if("goalie" == input)
-  {
-  	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
-  	ros::spin();
-  }
-  if("avoid" == input)
-  {
+  //}
+  // if("avoid" == input)
+  // {
 
-  }
+  // }
 
   return 0;
 }
