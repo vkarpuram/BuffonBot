@@ -14,6 +14,7 @@
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
+//#include <pcl_ros/point_cloud.h>
 
 using Eigen::Matrix3f;
 using Eigen::MatrixXf;
@@ -234,7 +235,7 @@ void evaluateScan(sensor_msgs::Image image)
 
 void turn()
 {
-	angle = atan2((interceptionPoint.z() - 0.0), (interceptionPoint.x() - 0.0));
+	angle = atan2((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
 	float speed = 2; // set the speed equal to max rotational velocity
  	
  	float angular_speed = speed*2*PI/360;
@@ -255,15 +256,19 @@ void turn()
     {
        twist.angular.z = abs(angular_speed);
     }
-    float t0 = ros::Time::now().toSec();
+   
+	ros::Time t0 = ros::Time::now();
     float current_angle = 0;
 
-     while(current_angle < relative_angle)
-      {
-      	   twistPublisher.publish(twist);
-           float t1 = ros::Time::now().toSec();
-           current_angle = angular_speed * (t1-t0);
-      }
+    while(current_angle < relative_angle)
+    {
+
+      	twistPublisher.publish(twist);
+        ros::Time t1 = ros::Time::now();
+		ros::Duration diff=t1-t0;
+        current_angle = angular_speed * (diff.toSec());
+    }
+
 
       twist.angular.z = 0;
       twistPublisher.publish(twist);
@@ -279,15 +284,19 @@ void goStraight()
 	twist.linear.y = 0;
 	twist.linear.z = 0;
 
+
 	float currentDistanceTraveled = 0;
- 	float t0 = ros::Time::now().toSec();
+ 	ros::Time t0 = ros::Time::now();
 	twist.linear.x = 0.5;
 
+	
 	while(currentDistanceTraveled < distance)
 	{
+		
 		twistPublisher.publish(twist);
-		float t1 = ros::Time::now().toSec();
-		currentDistanceTraveled = currentDistanceTraveled + .5 * (t1-t0);
+		ros::Time t1 = ros::Time::now();
+		ros::Duration diff=t1-t0;
+		currentDistanceTraveled = currentDistanceTraveled + .5 * (diff.toSec());
 	}
 
 	twist.linear.x = 0;
@@ -296,8 +305,10 @@ void goStraight()
 
 void moveToIntecept()
 {
+
 	turn();
 	goStraight();
+	ROS_INFO("moved");
 }
 
 
@@ -346,7 +357,7 @@ void interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float bal
 			interceptionPoint = ball + ballToDest *(heading-ball)/(heading - ball).norm(); // gives the point of interception of the ball
 		}
 	}
-	ROS_INFO("Intercepted ball");
+	//ROS_INFO("Intercepted ball");
 	return;
 }
 
@@ -371,14 +382,13 @@ int main(int argc, char **argv)
   	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
   	
 
-
-  	Vector3f robot = Vector3f(1,5,0);
+  	Vector3f robot = Vector3f(0,0,0);
   	Vector3f ball = Vector3f(4,1,0);
   	Vector3f heading = Vector3f(6,7,0);
 
 
   	interceptBall(robot, ball, heading, 0, 1.1);
-
+  	moveToIntecept();
   	ROS_INFO("%f %f", interceptionPoint.x(), interceptionPoint.y());
 
 	ros::spin();
