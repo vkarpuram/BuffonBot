@@ -57,6 +57,7 @@ float buildupScanLimit = 3; //10 ?
 float reset = 0;
 float resetLimit = 5;
 
+float PI = 3.1415926535897;
 
 float ballXVelocity = 0.0; //Velocity of the ball
 float timeBetween = 0.1; //fix this tentaive / unsure
@@ -71,7 +72,7 @@ geometry_msgs::Point32 closestPoint2; //measures the difference between these tw
 
 Vector3f motionVector; //Vector of motion of the ball
 
-
+geometry_msgs::Twist twist;
 
 // For Interception
 float interception_time; //Time to intercept the ball
@@ -81,12 +82,10 @@ float robotSpeed; //Speed of robot
 float ballSpeed; //Speed of ball
 Vector3f interceptionPoint; // Point of interception of ball
 
+float angle;
+
 ros::Publisher pub;
-
-
-
-
-
+ros::Publisher twistPublisher;
 
 void closestPointInBase()
 {
@@ -233,7 +232,73 @@ void evaluateScan(sensor_msgs::Image image)
 	findClosestInNewScan();
 }
 
+void turn()
+{
+	angle = atan2((interceptionPoint.z() - 0.0), (interceptionPoint.x() - 0.0));
+	float speed = 2; // set the speed equal to max rotational velocity
+ 	
+ 	float angular_speed = speed*2*PI/360;
+	float relative_angle = angle * 2 * PI / 360;
+	
+	twist.linear.x = 0;
+	twist.linear.y = 0;
+	twist.linear.z = 0;
 
+	twist.angular.x = 0;
+	twist.angular.y = 0;
+
+	if(angle < 90) // maybe? this determines which way it turns 
+	{
+       twist.angular.z = -abs(angular_speed);
+    }
+    else
+    {
+       twist.angular.z = abs(angular_speed);
+    }
+    float t0 = ros::Time::now().toSec();
+    float current_angle = 0;
+
+     while(current_angle < relative_angle)
+      {
+      	   twistPublisher.publish(twist);
+           float t1 = ros::Time::now().toSec();
+           current_angle = angular_speed * (t1-t0);
+      }
+
+      twist.angular.z = 0;
+      twistPublisher.publish(twist);
+}
+
+void goStraight()
+{
+	float distance = sqrt((interceptionPoint.z() - 0)*(interceptionPoint.z() - 0) + (interceptionPoint.x() -0)*(interceptionPoint.x() - 0));
+	twist.angular.x = 0;
+	twist.angular.y = 0;
+	twist.angular.z = 0;
+
+	twist.linear.y = 0;
+	twist.linear.z = 0;
+
+	float currentDistanceTraveled = 0;
+ 	float t0 = ros::Time::now().toSec();
+	twist.linear.x = 0.5;
+
+	while(currentDistanceTraveled < distance)
+	{
+		twistPublisher.publish(twist);
+		float t1 = ros::Time::now().toSec();
+		currentDistanceTraveled = currentDistanceTraveled + .5 * (t1-t0);
+	}
+
+	twist.linear.x = 0;
+	twistPublisher.publish(twist);
+}
+
+void moveToIntecept()
+{
+	turn();
+	goStraight();
+}
 
 
 
@@ -283,7 +348,6 @@ void interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float bal
 	}
 	ROS_INFO("Intercepted ball");
 	return;
-
 }
 
 
@@ -301,6 +365,7 @@ int main(int argc, char **argv)
 
   // if("goalie" == input)
   // {
+  	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmg_Imaged_vel_mux/input/navi", 1000);
   	pub =n.advertise<PointCloud>("/cloud", 1);
 
   	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
