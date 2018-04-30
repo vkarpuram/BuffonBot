@@ -58,7 +58,7 @@ float reset = 0;
 float resetLimit = 5;
 
 
-float ballXVelocity = 0.0;
+float ballXVelocity = 0.0; //Velocity of the ball
 float timeBetween = 0.1; //fix this tentaive / unsure
 
 bool somethingMovedCloser = false; //used to indicate when a new obect is closer to the robot
@@ -69,7 +69,24 @@ sensor_msgs::PointCloud threshold;
 geometry_msgs::Point32 closestPoint;
 geometry_msgs::Point32 closestPoint2; //measures the difference between these two to find the balls speed once the new scan has become different than the basescan
 
-Vector3f motionVector;
+Vector3f motionVector; //Vector of motion of the ball
+
+
+
+// For Interception
+float interception_time; //Time to intercept the ball
+float ballX; //Start x position of ball
+float ballY; //Start y position of ball
+float robotSpeed; //Speed of robot
+float ballSpeed; //Speed of ball
+Vector3f interceptionPoint; // Point of interception of ball
+
+ros::Publisher pub;
+
+
+
+
+
 
 void closestPointInBase()
 {
@@ -164,6 +181,8 @@ void evaluateScan(sensor_msgs::Image image)
 
 	std::vector<geometry_msgs::Point32> points = cloud.points;
 	std::vector<geometry_msgs::Point32> newPoints;
+	image.header = cloud.header;
+	pub.publish(cloud);
 
 	if(buildup < buildupScanLimit) 
 	{
@@ -214,25 +233,96 @@ void evaluateScan(sensor_msgs::Image image)
 	findClosestInNewScan();
 }
 
+
+
+
+
+// float distance(Vector3f& one, Vector3f& two){
+
+// 	return sqrt(pow(two.x()-one.x(),2) + pow(two.y()-one.y(),2));
+// }
+
+float distance(float x1, float y1, float x2, float y2){
+	return sqrt(pow(x2-x1,2) + pow(y2-y1,2));
+}
+
+
+
+// Interception of ball
+
+float interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float ballVelocity, float robotVelocity){
+
+	//float sin_Ball = ((robot.x()- ball.x()) * ((heading.y()-ball.y())) - ((robot.y()- ball.y()) * ((heading.x()-ball.x()))))/(distance(robot, ball)* distance(ball, heading));  
+
+	ROS_INFO("Cannot Intercept Ball, too fast");
+	//float sin_Ball = (((robot.x()-ball.x()) * (heading.y()-ball.y())) - ((robot.y()-ball.y())*(heading.x()-ball.x())))/(distance(robot.x(), robot.y(), ball.x(),ball.y()) * distance(ball.x(), ball.y(), heading.x(),heading.y()));
+	
+
+	float sin_Ball = (((robot.x()-ball.x()) * (heading.y()-ball.y())) - ((robot.y()-ball.y())*(heading.x()-ball.x())))/((robot-ball).norm() * (heading-ball).norm());
+	float sin_Robot = (ballVelocity / robotVelocity) * sin_Ball;
+
+	if(abs(sin_Robot) > 1){
+		ROS_INFO("Cannot Intercept Ball, too fast");
+		return -0.222222;
+	}
+
+	else{
+
+		float sin_interceptPoint = (sin_Robot * sqrt(1-pow(sin_Ball,2)) + sin_Ball * sqrt(1-pow(sin_Robot, 2)));
+		float ballToDest = distance(ball.x(),ball.y(), robot.x(),robot.y()) * (sin_Robot / sin_interceptPoint);
+
+		if(ballToDest > distance(robot.x(),robot.y(),heading.x(),heading.y())){
+			ROS_INFO("Cannot Intercept Ball. Ball reaches destination before being caught by robot");
+			return -0.222222;
+		}
+		else{
+			interception_time = ballToDest/ballVelocity; // Gives the time of interception of the ball
+			interceptionPoint = ball + ballToDest *(heading-ball)/(heading - ball).norm(); // gives the point of interception of the ball
+		}
+
+	}
+
+	ROS_INFO("Intercepted ball");
+	return interceptionPoint.y();
+
+}
+
 int main(int argc, char **argv) 
 {
   ros::init(argc, argv, "BuffonBot"); // topic /camera/depth/points 
   ros::NodeHandle n;
+ 
   
+  // cout << "Type \"goalie\" for Goalie Mode!\n or \nType\"avoid\" for Evasion Mode!\n\n";
+  // string input;
+  // cin >> input;
 
-  string input;
-  cout << "Type \"goalie\" for Goalie Mode\n or \n \"avoid\" for Evasion Mode!\n";
-  cin >> input;
 
-  if("goalie" == input)
-  {
+  // if("goalie" == input)
+  // {
+  	pub =n.advertise<PointCloud>("/cloud", 1);
+
   	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
-  	ros::spin();
-  }
-  if("avoid" == input)
-  {
+  	
 
-  }
+
+  	Vector3f robot = Vector3f(1,5,0);
+  	Vector3f ball = Vector3f(4,1,0);
+  	Vector3f heading = Vector3f(6,7,0);
+
+
+  	ROS_INFO("%f", interceptBall(robot, ball, heading, 1.1, 1.0));
+
+	ros::spin();
+  //}
+  // if("avoid" == input)
+  // {
+
+  // }
+
+
+
+
 
   return 0;
 }
