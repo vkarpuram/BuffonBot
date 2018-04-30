@@ -252,34 +252,35 @@ float distance(float x1, float y1, float x2, float y2){
 
 float interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float ballVelocity, float robotVelocity){
 
-	//float sin_Ball = ((robot.x()- ball.x()) * ((heading.y()-ball.y())) - ((robot.y()- ball.y()) * ((heading.x()-ball.x()))))/(distance(robot, ball)* distance(ball, heading));  
-
-	ROS_INFO("Cannot Intercept Ball, too fast");
-	//float sin_Ball = (((robot.x()-ball.x()) * (heading.y()-ball.y())) - ((robot.y()-ball.y())*(heading.x()-ball.x())))/(distance(robot.x(), robot.y(), ball.x(),ball.y()) * distance(ball.x(), ball.y(), heading.x(),heading.y()));
-	
-
 	float sin_Ball = (((robot.x()-ball.x()) * (heading.y()-ball.y())) - ((robot.y()-ball.y())*(heading.x()-ball.x())))/((robot-ball).norm() * (heading-ball).norm());
-	float sin_Robot = (ballVelocity / robotVelocity) * sin_Ball;
 
+	float sin_Robot = (ballVelocity / robotVelocity) * sin_Ball;
+	
+	// If the ball is moving too fast to intercept, print an error message and return
 	if(abs(sin_Robot) > 1){
 		ROS_INFO("Cannot Intercept Ball, too fast");
 		return -0.222222;
 	}
 
+	// Calculate the point of interception
 	else{
 
 		float sin_interceptPoint = (sin_Robot * sqrt(1-pow(sin_Ball,2)) + sin_Ball * sqrt(1-pow(sin_Robot, 2)));
-		float ballToDest = distance(ball.x(),ball.y(), robot.x(),robot.y()) * (sin_Robot / sin_interceptPoint);
+		
 
+		float ballToDest = distance(ball.x(),ball.y(), robot.x(),robot.y()) * (sin_Robot / sin_interceptPoint); // The distance from the ball to the destination
+
+
+		// If the ball reaches the destination before it can be caught, print an error and return
 		if(ballToDest > distance(robot.x(),robot.y(),heading.x(),heading.y())){
 			ROS_INFO("Cannot Intercept Ball. Ball reaches destination before being caught by robot");
 			return -0.222222;
 		}
+		//Calculate the point of interception
 		else{
 			interception_time = ballToDest/ballVelocity; // Gives the time of interception of the ball
 			interceptionPoint = ball + ballToDest *(heading-ball)/(heading - ball).norm(); // gives the point of interception of the ball
 		}
-
 	}
 
 	ROS_INFO("Intercepted ball");
@@ -311,7 +312,7 @@ int main(int argc, char **argv)
   	Vector3f heading = Vector3f(6,7,0);
 
 
-  	ROS_INFO("%f", interceptBall(robot, ball, heading, 1.1, 1.0));
+  	ROS_INFO("%f", interceptBall(robot, ball, heading, 1.0, 1.1));
 
 	ros::spin();
   //}
