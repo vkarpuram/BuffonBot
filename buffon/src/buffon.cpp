@@ -60,7 +60,7 @@ float fy = -564.227;
 float PI = 3.1415926535897;
 
 float ballXVelocity = 0.0; //Velocity of the ball
-float timeBetween = 0.1; //fix this tentaive / unsure
+float timeBetween = 0; //fix this tentaive / unsure
 
 bool somethingMovedCloser = false; //used to indicate when a new obect is closer to the robot
 
@@ -89,6 +89,8 @@ float angle;
 int numberOfPoints = 0;
 ros::Publisher pub;
 ros::Publisher twistPublisher;
+ros::Time t1;
+ros::Time t2;
 
 void calculateSpeed()
 {
@@ -331,7 +333,7 @@ void interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float bal
 void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 { 
 	sensor_msgs::PointCloud cloud;
-
+	
 	if(numberOfBallScans < 2)
 	{
 		if(numberOfPoints < 10)
@@ -339,25 +341,40 @@ void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 			sensor_msgs::PointCloud cloud;
 			cloud = toPointcloud(pcl2);
 			std::vector<geometry_msgs::Point32> points = cloud.points;
-			std::vector<geometry_msgs::Point32> newPoints;
 			cloud.header = pcl2.header;
-		
+
 			pub.publish(cloud);
 		}
 
+		if(numberOfPoints > 10 && numberOfBallScans == 0)
+		{
+			numberOfBallScans++;
+			t1 = ros::Time::now();
+		}
+
+		if(numberOfPoints > 10 && numberOfBallScans == 1)
+		{
+			numberOfBallScans++;
+			t2 = ros::Time::now();
+		}
+
 		numberOfPoints = 0;
-		numberOfBallScans++;
 
 		clouds.push_back(cloud);
 	}
+	else
+	{
+		ros::Duration diff = (t2-t1);
+		timeBetween = diff.toSec();
 
-	findZPoint1(clouds[1]);
-	findZPoint2(clouds[2]);
+		findZPoint1(clouds[0]);
+		findZPoint2(clouds[1]);
 
-	Vector3f robot = Vector3f(0,0,0);
-	calculateSpeed();
-	interceptBall(robot,initialPossition, motionVector, ballSpeed, .5); //fix this
-	moveToIntecept();
+		Vector3f robot = Vector3f(0,0,0);
+		calculateSpeed();
+		interceptBall(robot, initialPossition, motionVector, ballSpeed, .5); //fix this
+		moveToIntecept();
+	}
 }
 
 int main(int argc, char **argv) 
@@ -369,13 +386,6 @@ int main(int argc, char **argv)
   pub =n.advertise<PointCloud>("/cloud", 1);
 
   ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
-  	
-  
-  // Vector3f ball = Vector3f(4,1,0);
-  // Vector3f heading = Vector3f(6,7,0);
-
-
-  //interceptBall(robot, ball, heading, 0, 1.1);
    	
   ros::spin();
 
