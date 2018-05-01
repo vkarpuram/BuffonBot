@@ -14,7 +14,12 @@
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
-//#include <pcl_ros/point_cloud.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
+#include <pcl_ros/transforms.h>
 
 using Eigen::Matrix3f;
 using Eigen::MatrixXf;
@@ -174,6 +179,20 @@ sensor_msgs::PointCloud imageToCloud(sensor_msgs::Image image)
 	return cloud;
 }
 
+void toPointcloud(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input)
+{
+
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(*input,pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    
+    pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud);
+
+    float x = temp_cloud->points[0].x;
+ 	float y = temp_cloud->points[0].y;
+ 	float z = temp_cloud->points[0].z;
+ }
+
 void evaluateScan(sensor_msgs::Image image)
 { 
 	ROS_INFO("Scanning");
@@ -235,7 +254,7 @@ void evaluateScan(sensor_msgs::Image image)
 
 void turn()
 {
-	angle = atan((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
+	angle = atan2((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
 	float speed = .5; // set the speed equal to max rotational velocity
  	float angular_speed = 2;
 	float relative_angle = angle;
@@ -267,13 +286,13 @@ void turn()
         current_angle = angular_speed * (diff.toSec());
     }
 
-      twist.angular.z = 0;
-      twistPublisher.publish(twist);
+    twist.angular.z = 0;
+    twistPublisher.publish(twist);
 }
 
 void goStraight()
 {
-	float distance = sqrt((interceptionPoint.x() - 0)*(interceptionPoint.y() - 0) + (interceptionPoint.x() -0)*(interceptionPoint.x() - 0));
+	float distance = sqrt((interceptionPoint.x() - 0)*(interceptionPoint.x() - 0) + (interceptionPoint.y() -0)*(interceptionPoint.y() - 0));
 	
 	twist.angular.x = 0;
 	twist.angular.y = 0;
