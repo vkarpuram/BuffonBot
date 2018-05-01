@@ -174,36 +174,39 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 	}
 
 	bool allBelow = false;
-
+	float closestZ = likeZ[0][0].z;
+	ball = likeZ[0];
 	for(int i = 0; i < likeZ.size(); i++)
 	{
 		for (int j = 0; j < likeZ[i].size(); j++)
 		{
-			ball = likeZ[i];
-			if(likeZ[i][j].y < 0 && likeZ[i][j].z >3)
+
+			if(likeZ[i][j].z < closestZ)
 			{
+				closestZ = likeZ[i][j].z;
 				ball = likeZ[i];
-				allBelow = true;
 				break;
 			}
-			else
-			{
-				allBelow = false;
-				break;
-			}
+			// if(likeZ[i][j].y < 0 && likeZ[i][j].z >3)
+			// {
+			// 	ball = likeZ[i];
+			// 	allBelow = true;
+			// 	break;
+			// }
+			// else
+			// {
+			// 	allBelow = false;
+			// 	break;
+			// }
 		}
 
-		if(allBelow)
-		{
-			largeObjects.push_back(likeZ[i]);
-			ball = likeZ[i];
-		}
+		// if(allBelow)
+		// {
+		// 	largeObjects.push_back(likeZ[i]);
+		// 	ball = likeZ[i];
+		// }
 	}
 
-
-	//ROS_INFO("done");
-
-	ROS_INFO("largeObjcts.size=%d", largeObjects.size());
 	return ball;
 }
 
@@ -230,11 +233,10 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 
  		if(point.x < 2 && point.x > -2 )
  		{	
- 			//if(point.y < .5 && point.y > -.4)
- 			//{
-
+ 			if(point.y > -.4)
+ 			{
  				newPoints.push_back(point);
- 			//}
+ 			}
  		}
  	}
 
@@ -456,11 +458,11 @@ int main(int argc, char **argv)
   	Vector3f heading = Vector3f(6,7,0);
 
 
-  	interceptBall(robot, ball, heading, 0, 1.1);
-  	moveToIntecept();
-  	ROS_INFO("%f %f", interceptionPoint.x(), interceptionPoint.y());
+  	//interceptBall(robot, ball, heading, 0, 1.1);
+ //  	moveToIntecept();
+ //  	ROS_INFO("%f %f", interceptionPoint.x(), interceptionPoint.y());
 
-	ros::spin();
+	 ros::spin();
   //}
   // if("avoid" == input)
   // {
