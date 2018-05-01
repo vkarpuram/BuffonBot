@@ -146,7 +146,6 @@ void findCloserPoint(std::vector<geometry_msgs::Point32> points)
 std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32> points)
 {
 	std::vector< vector<geometry_msgs::Point32> > likeZ;
-	std::vector< vector<geometry_msgs::Point32> > largeObjects;
 	std::vector<geometry_msgs::Point32> uniqueZ;
 	std::vector<geometry_msgs::Point32> ball;
 	bool sameZ = false;
@@ -175,36 +174,19 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 
 	bool allBelow = false;
 	float closestZ = likeZ[0][0].z;
+
 	ball = likeZ[0];
 	for(int i = 0; i < likeZ.size(); i++)
 	{
 		for (int j = 0; j < likeZ[i].size(); j++)
 		{
-
 			if(likeZ[i][j].z < closestZ)
 			{
 				closestZ = likeZ[i][j].z;
 				ball = likeZ[i];
 				break;
 			}
-			// if(likeZ[i][j].y < 0 && likeZ[i][j].z >3)
-			// {
-			// 	ball = likeZ[i];
-			// 	allBelow = true;
-			// 	break;
-			// }
-			// else
-			// {
-			// 	allBelow = false;
-			// 	break;
-			// }
 		}
-
-		// if(allBelow)
-		// {
-		// 	largeObjects.push_back(likeZ[i]);
-		// 	ball = likeZ[i];
-		// }
 	}
 
 	return ball;
@@ -233,7 +215,7 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 
  		if(point.x < 2 && point.x > -2 )
  		{	
- 			if(point.y > -.4)
+ 			if(point.y > -.4 && point.y < 0) // set to ground height
  			{
  				newPoints.push_back(point);
  			}
