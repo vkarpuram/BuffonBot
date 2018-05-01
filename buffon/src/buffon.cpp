@@ -235,11 +235,10 @@ void evaluateScan(sensor_msgs::Image image)
 
 void turn()
 {
-	angle = atan2((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
-	float speed = 2; // set the speed equal to max rotational velocity
- 	
- 	float angular_speed = speed*2*PI/360;
-	float relative_angle = angle * 2 * PI / 360;
+	angle = atan((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
+	float speed = .5; // set the speed equal to max rotational velocity
+ 	float angular_speed = 2;
+	float relative_angle = angle;
 	
 	twist.linear.x = 0;
 	twist.linear.y = 0;
@@ -262,13 +261,11 @@ void turn()
 
     while(current_angle < relative_angle)
     {
-
       	twistPublisher.publish(twist);
         ros::Time t1 = ros::Time::now();
 		ros::Duration diff=t1-t0;
         current_angle = angular_speed * (diff.toSec());
     }
-
 
       twist.angular.z = 0;
       twistPublisher.publish(twist);
@@ -276,14 +273,14 @@ void turn()
 
 void goStraight()
 {
-	float distance = sqrt((interceptionPoint.z() - 0)*(interceptionPoint.z() - 0) + (interceptionPoint.x() -0)*(interceptionPoint.x() - 0));
+	float distance = sqrt((interceptionPoint.x() - 0)*(interceptionPoint.y() - 0) + (interceptionPoint.x() -0)*(interceptionPoint.x() - 0));
+	
 	twist.angular.x = 0;
 	twist.angular.y = 0;
 	twist.angular.z = 0;
 
 	twist.linear.y = 0;
 	twist.linear.z = 0;
-
 
 	float currentDistanceTraveled = 0;
  	ros::Time t0 = ros::Time::now();
@@ -292,23 +289,20 @@ void goStraight()
 	
 	while(currentDistanceTraveled < distance)
 	{
-		
 		twistPublisher.publish(twist);
 		ros::Time t1 = ros::Time::now();
-		ros::Duration diff=t1-t0;
-		currentDistanceTraveled = currentDistanceTraveled + .5 * (diff.toSec());
+		ros::Duration diff = t1-t0;
+		currentDistanceTraveled = .5 * (diff.toSec());
 	}
-
+	
 	twist.linear.x = 0;
 	twistPublisher.publish(twist);
 }
 
 void moveToIntecept()
 {
-
 	turn();
 	goStraight();
-	ROS_INFO("moved");
 }
 
 
@@ -376,7 +370,7 @@ int main(int argc, char **argv)
 
   // if("goalie" == input)
   // {
-  	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmg_Imaged_vel_mux/input/navi", 1000);
+  	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   	pub =n.advertise<PointCloud>("/cloud", 1);
 
   	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
