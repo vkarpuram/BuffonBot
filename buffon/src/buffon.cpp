@@ -143,40 +143,68 @@ void findCloserPoint(std::vector<geometry_msgs::Point32> points)
 	
 }
 
-sensor_msgs::PointCloud imageToCloud(sensor_msgs::Image image)
+std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32> points)
 {
-  sensor_msgs::PointCloud cloud;
-  std::vector<geometry_msgs::Point32> points;
+	std::vector< vector<geometry_msgs::Point32> > likeZ;
+	std::vector< vector<geometry_msgs::Point32> > largeObjects;
+	std::vector<geometry_msgs::Point32> uniqueZ;
+	std::vector<geometry_msgs::Point32> ball;
+	bool sameZ = false;
 
-  const int image_width = image.width;
-  const int image_height = image.height;
-  cloud.points.resize(image_width * image_height);
+	uniqueZ.push_back(points[0]);
+	likeZ.push_back(uniqueZ);
 
-  int i = 0;
-  for (int y = 0; y < image_height; ++y) {
-    for (int x = 0; x < image_width; ++x) {
-      uint16_t byte0 = image.data[2 * (x + y * image_width) + 0];
-      uint16_t byte1 = image.data[2 * (x + y * image_width) + 1];
-      if (!image.is_bigendian) {
-        std::swap(byte0, byte1);
-      }
-      
-      const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
-      cloud.header.frame_id = "kinect_1";
+	for(int i = 0; i < points.size(); i++)
+	{
+		for(int j = 0; j < likeZ.size(); j++)
+		{
+			if(likeZ[j][0].z == points[i].z)
+			{
+				sameZ = true;
+			}
+			if(sameZ)
+			{
+		 		std::vector<geometry_msgs::Point32> newUniqueZ = likeZ[j];
+		 		newUniqueZ.push_back(points[i]);
+		 		likeZ[j] = newUniqueZ;
+		 		sameZ = false;
+			}
+		}
+		
+	}
 
-      geometry_msgs::Point32 point;
+	bool allBelow = false;
 
-      const float Z = 1.0 / (value1 + value2 * static_cast<float>(raw_depth));
-      point.z = Z * (static_cast<float>(x) - px) / fx;
-      point.y = Z * (static_cast<float>(y) - py) / fy;
-      point.x = Z;
-    
-      cloud.points[i] = point;
-      
-      i++;
-    }
-  }
-	return cloud;
+	for(int i = 0; i < likeZ.size(); i++)
+	{
+		for (int j = 0; j < likeZ[i].size(); j++)
+		{
+			ball = likeZ[i];
+			if(likeZ[i][j].y < 0 && likeZ[i][j].z >3)
+			{
+				ball = likeZ[i];
+				allBelow = true;
+				break;
+			}
+			else
+			{
+				allBelow = false;
+				break;
+			}
+		}
+
+		if(allBelow)
+		{
+			largeObjects.push_back(likeZ[i]);
+			ball = likeZ[i];
+		}
+	}
+
+
+	//ROS_INFO("done");
+
+	ROS_INFO("largeObjcts.size=%d", largeObjects.size());
+	return ball;
 }
 
 //sensor_msgs::PointCloud toPointcloud(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input)
@@ -199,8 +227,18 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
     	point.x = temp_cloud->points[i].x;
  		point.y = temp_cloud->points[i].y;
  		point.z = temp_cloud->points[i].z;
- 		newPoints.push_back(point);
+
+ 		if(point.x < 2 && point.x > -2 )
+ 		{	
+ 			//if(point.y < .5 && point.y > -.4)
+ 			//{
+
+ 				newPoints.push_back(point);
+ 			//}
+ 		}
  	}
+
+ 	newPoints = findBall(newPoints);
  	cloud.points = newPoints;
  	return cloud;
  }
@@ -214,8 +252,10 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 	//sensor_msgs::PointCloud cloud = toPointcloud(pcl2);
 	std::vector<geometry_msgs::Point32> points = cloud.points;
 	std::vector<geometry_msgs::Point32> newPoints;
-	//image.header = cloud.header;
-	cloud.header.frame_id = "kinect_1";
+	cloud.header = pcl2.header;
+
+	//cloud.header.frame_id = "kinect_1";
+	ROS_INFO("%d", cloud.points.size());
 	pub.publish(cloud);
 
 	if(buildup < buildupScanLimit) 
@@ -407,7 +447,8 @@ int main(int argc, char **argv)
   	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   	pub =n.advertise<PointCloud>("/cloud", 1);
 
-  	ros::Subscriber sub = n.subscribe("/camera/depth/", 1000, evaluateScan);
+
+  	ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
   	
 
   	Vector3f robot = Vector3f(0,0,0);
