@@ -179,28 +179,43 @@ sensor_msgs::PointCloud imageToCloud(sensor_msgs::Image image)
 	return cloud;
 }
 
-void toPointcloud(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input)
+//sensor_msgs::PointCloud toPointcloud(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input)
+sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 {
 
     pcl::PCLPointCloud2 pcl_pc2;
-    pcl_conversions::toPCL(*input,pcl_pc2);
+    pcl_conversions::toPCL(input,pcl_pc2);
     pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
     
     pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud);
+    sensor_msgs::PointCloud cloud;
+    cloud.points.resize(temp_cloud->points.size());
 
-    float x = temp_cloud->points[0].x;
- 	float y = temp_cloud->points[0].y;
- 	float z = temp_cloud->points[0].z;
+    std::vector<geometry_msgs::Point32> newPoints;
+
+    for(int i = 0; i < temp_cloud->points.size(); i++)
+    {
+    	geometry_msgs::Point32 point;
+    	point.x = temp_cloud->points[i].x;
+ 		point.y = temp_cloud->points[i].y;
+ 		point.z = temp_cloud->points[i].z;
+ 		newPoints.push_back(point);
+ 	}
+ 	cloud.points = newPoints;
+ 	return cloud;
  }
 
-void evaluateScan(sensor_msgs::Image image)
+//void evaluateScan(sensor_msgs::Image image)
+ void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 { 
 	ROS_INFO("Scanning");
-	sensor_msgs::PointCloud cloud = imageToCloud(image);
-
+	sensor_msgs::PointCloud cloud;
+	cloud = toPointcloud(pcl2);
+	//sensor_msgs::PointCloud cloud = toPointcloud(pcl2);
 	std::vector<geometry_msgs::Point32> points = cloud.points;
 	std::vector<geometry_msgs::Point32> newPoints;
-	image.header = cloud.header;
+	//image.header = cloud.header;
+	cloud.header.frame_id = "kinect_1";
 	pub.publish(cloud);
 
 	if(buildup < buildupScanLimit) 
@@ -392,7 +407,7 @@ int main(int argc, char **argv)
   	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   	pub =n.advertise<PointCloud>("/cloud", 1);
 
-  	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
+  	ros::Subscriber sub = n.subscribe("/camera/depth/", 1000, evaluateScan);
   	
 
   	Vector3f robot = Vector3f(0,0,0);
