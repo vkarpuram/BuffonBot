@@ -89,13 +89,14 @@ float ballSpeed; //Speed of ball
 Vector3f interceptionPoint; // Point of interception of ball
 
 float angle;
-
+int numberOfPoints = 0;
 ros::Publisher pub;
 ros::Publisher twistPublisher;
 
 void closestPointInBase()
 {
 	closestPoint = baseScan.points[0];
+
 	for(int i = 1; i < baseScan.points.size(); i++)
 	{
 		if(baseScan.points[i].x < closestPoint.x)
@@ -103,7 +104,6 @@ void closestPointInBase()
 			closestPoint = baseScan.points[i];
 		}
 	}	
-	ROS_INFO("x = %f", closestPoint.x);
 }
 
 void calculateSpeed()
@@ -150,6 +150,15 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 	std::vector<geometry_msgs::Point32> ball;
 	bool sameZ = false;
 
+	if(points.size() == 0)
+	{
+		geometry_msgs::Point32 point;
+		point.x = 0;
+		point.y =0;
+		point.z =0; 
+
+		points.push_back(point);
+	}
 	uniqueZ.push_back(points[0]);
 	likeZ.push_back(uniqueZ);
 
@@ -173,23 +182,30 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 	}
 
 	bool allBelow = false;
-	float closestZ = likeZ[0][0].z;
-
-	ball = likeZ[0];
-	for(int i = 0; i < likeZ.size(); i++)
+	
+	
+	if(likeZ.size() > 0)
 	{
-		for (int j = 0; j < likeZ[i].size(); j++)
+		float closestZ = likeZ[0][0].z;
+		ball = likeZ[0];
+
+		for(int i = 0; i < likeZ.size(); i++)
 		{
-			if(likeZ[i][j].z < closestZ)
+			for (int j = 0; j < likeZ[i].size(); j++)
 			{
-				closestZ = likeZ[i][j].z;
-				ball = likeZ[i];
-				break;
+				if(likeZ[i][j].z < closestZ)
+				{
+					ROS_INFO("updating");
+					closestZ = likeZ[i][j].z;
+					ball = likeZ[i];
+					break;
+				}
 			}
 		}
-	}
 
-	return ball;
+		return ball;
+	}
+	return points;
 }
 
 //sensor_msgs::PointCloud toPointcloud(const boost::shared_ptr<const sensor_msgs::PointCloud2>& input)
@@ -213,16 +229,21 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
  		point.y = temp_cloud->points[i].y;
  		point.z = temp_cloud->points[i].z;
 
- 		if(point.x < 2 && point.x > -2 )
+ 		if(point.x < 1 && point.x > -1)
  		{	
- 			if(point.y > -.4 && point.y < 0) // set to ground height
+ 			if(point.y > 0 && point.y < .24) // set to ground height
  			{
- 				newPoints.push_back(point);
+ 				if(point.z <5)
+ 				{
+ 					newPoints.push_back(point);
+ 				}
  			}
  		}
  	}
 
+ 	
  	newPoints = findBall(newPoints);
+ 	numberOfPoints = newPoints.size();
  	cloud.points = newPoints;
  	return cloud;
  }
@@ -230,64 +251,62 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 //void evaluateScan(sensor_msgs::Image image)
  void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 { 
-	ROS_INFO("Scanning");
-	sensor_msgs::PointCloud cloud;
-	cloud = toPointcloud(pcl2);
-	//sensor_msgs::PointCloud cloud = toPointcloud(pcl2);
-	std::vector<geometry_msgs::Point32> points = cloud.points;
-	std::vector<geometry_msgs::Point32> newPoints;
-	cloud.header = pcl2.header;
+	if(numberOfPoints < 10){
+		ROS_INFO("Scanning");
+		sensor_msgs::PointCloud cloud;
+		cloud = toPointcloud(pcl2);
+		std::vector<geometry_msgs::Point32> points = cloud.points;
+		std::vector<geometry_msgs::Point32> newPoints;
+		cloud.header = pcl2.header;
+		ROS_INFO("%d", cloud.points.size());
+		pub.publish(cloud);
 
-	//cloud.header.frame_id = "kinect_1";
-	ROS_INFO("%d", cloud.points.size());
-	pub.publish(cloud);
+		if(buildup < buildupScanLimit) 
+		{
+			baseScan.points.insert(baseScan.points.end(), cloud.points.begin(), cloud.points.end());
 
-	if(buildup < buildupScanLimit) 
-	{
-		baseScan.points.insert(baseScan.points.end(), cloud.points.begin(), cloud.points.end());
+		 	buildup++;
+		 	return;
+		}
 
-	 	buildup++;
-	 	return;
+		if(buildup == buildupScanLimit)
+		{
+			ROS_INFO("Base Scan Complete");
+			closestPointInBase();
+			buildup++;
+
+			return;
+		}
+
+		if(somethingMovedCloser)
+		{
+			ROS_INFO("Something has Moved Closer");
+			findCloserPoint(points);
+			calculateSpeed();
+			
+			reset = 0;
+			return;
+		}
+
+		for(int i = 0; i < points.size(); i++)
+		{
+			geometry_msgs::Point32 point;
+
+			point.x = points[i].x;
+			point.y = points[i].y;
+			point.z = points[i].z;
+			
+			newPoints.push_back(point);
+		}
+
+		threshold.points = newPoints;
+		reset = reset + 1;
+
+		if(reset == resetLimit)
+		{
+			buildup = 0;
+		}
 	}
-
-	if(buildup == buildupScanLimit)
-	{
-		ROS_INFO("Base Scan Complete");
-		closestPointInBase();
-		buildup++;
-
-		return;
-	}
-
-	if(somethingMovedCloser)
-	{
-		ROS_INFO("Something has Moved Closer");
-		findCloserPoint(points);
-		calculateSpeed();
-		
-		reset = 0;
-		return;
-	}
-
-	for(int i = 0; i < points.size(); i++)
-	{
-		geometry_msgs::Point32 point;
-
-		point.x = points[i].x;
-		point.y = points[i].y;
-		point.z = points[i].z;
-		
-		newPoints.push_back(point);
-	}
-
-	threshold.points = newPoints;
-	reset = reset + 1;
-
-	if(reset == resetLimit)
-	{
-		buildup = 0;
-	}
-
 	findClosestInNewScan();
 }
 
@@ -431,17 +450,15 @@ int main(int argc, char **argv)
   	twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   	pub =n.advertise<PointCloud>("/cloud", 1);
 
-
   	ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
   	
-
   	Vector3f robot = Vector3f(0,0,0);
   	Vector3f ball = Vector3f(4,1,0);
   	Vector3f heading = Vector3f(6,7,0);
 
 
-  	//interceptBall(robot, ball, heading, 0, 1.1);
- //  	moveToIntecept();
+  	interceptBall(robot, ball, heading, 0, 1.1);
+   	moveToIntecept();
  //  	ROS_INFO("%f %f", interceptionPoint.x(), interceptionPoint.y());
 
 	 ros::spin();
