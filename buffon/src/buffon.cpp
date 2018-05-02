@@ -117,6 +117,7 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 
 		points.push_back(point);
 	}
+
 	uniqueZ.push_back(points[0]);
 	likeZ.push_back(uniqueZ);
 
@@ -187,7 +188,7 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 
  		if(point.x < 1 && point.x > -1)
  		{	
- 			if(point.y > -.15 && point.y < .24) // set to ground height
+ 			if(point.y > -.1 && point.y < .24) // set to ground height
  			{
  				if(point.z <5)
  				{
@@ -197,12 +198,10 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
  		}
  	}
 
- 	
  	newPoints = findBall(newPoints);
  	cloud.points = newPoints;
  	return cloud;
  }
-
 
 void findZPoint1(sensor_msgs::PointCloud cloud)
 {
@@ -234,13 +233,13 @@ void turn()
 	twist.angular.x = 0;
 	twist.angular.y = 0;
 
-	if(angle < 0) // maybe? this determines which way it turns 
+	if(angle < 0)
 	{
        twist.angular.z = angular_speed;
     }
     else
     {
-       twist.angular.z = -(angular_speed);
+       twist.angular.z = -1 * (angular_speed);
     }
    
 	ros::Time t0 = ros::Time::now();
@@ -260,7 +259,7 @@ void turn()
 
 void goStraight()
 {
-	float distance = sqrt((interceptionPoint.x() - 0)*(interceptionPoint.x() - 0) + (interceptionPoint.y() -0)*(interceptionPoint.y() - 0));
+	float distance = sqrt(((interceptionPoint.x() - 0)*(interceptionPoint.x() - 0)) + ((interceptionPoint.y() -0)*(interceptionPoint.y() - 0)));
 	
 	twist.angular.x = 0;
 	twist.angular.y = 0;
@@ -392,7 +391,7 @@ int main(int argc, char **argv)
 
   twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   pub =n.advertise<PointCloud>("/cloud", 1);
-  pub =n.advertise<PointCloud>("/ball", 1);
+  ballPublisher =n.advertise<PointCloud>("/ball", 1);
 
   ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
    	
