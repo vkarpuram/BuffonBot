@@ -14,6 +14,12 @@
 #include <geometry_msgs/Twist.h>
 #include <nav_msgs/Odometry.h>
 #include <visualization_msgs/Marker.h>
+#include <pcl_ros/point_cloud.h>
+#include <pcl_conversions/pcl_conversions.h>
+#include <pcl/point_types.h>
+#include <pcl/PCLPointCloud2.h>
+#include <pcl/conversions.h>
+#include <pcl_ros/transforms.h>
 
 using Eigen::Matrix3f;
 using Eigen::MatrixXf;
@@ -32,7 +38,7 @@ using sensor_msgs::Image;
 using std::cout;
 using std::vector;
 using namespace std;
-
+Vector3f robot = Vector3f(0,0,0);
 // Global Robot Parameters
 const float gRobotRadius = 0.18;
 const float gRobotHeight = 0.36;
@@ -51,266 +57,345 @@ float py = 240.0;
 float fx = 588.446;
 float fy = -564.227;
 
-//Determines how many baseScans will be taken
-float buildup = 0;
-float buildupScanLimit = 10; //10 ?
-float reset = 0;
-float resetLimit = 5;
+float PI = 3.1415926535897;
 
-float ballXVelocity = 0.0;
-float distance2 = 0.0;
-float zLoc = 0.0;
-float timeBetween = 0.1; //fix this tentaive / unsure
+float ballXVelocity = 0.0; //Velocity of the ball
+float timeBetween = 0; //fix this tentaive / unsure
 
 bool somethingMovedCloser = false; //used to indicate when a new obect is closer to the robot
 
 sensor_msgs::PointCloud baseScan;// builds up a basescan for the robot to compare with  
 sensor_msgs::PointCloud threshold;
 
-geometry_msgs::Point32 closestPoint;
-geometry_msgs::Point32 closestPoint2; //measures the difference between these two to find the balls speed once the new scan has become different than the basescan
+geometry_msgs::Point32 point1;
+geometry_msgs::Point32 point2; //measures the difference between these two to find the balls speed once the new scan has become different than the basescan
 
-Vector3f motionVector;
+std::vector<sensor_msgs::PointCloud> clouds;
+Vector3f motionVector; //Vector of motion of the ball
+
 geometry_msgs::Twist twist;
-ros::Publisher pub;
 
-void closestPointInBase()
+float numberOfBallScans = 0;
+
+// For Interception
+float interception_time; //Time to intercept the ball
+float ballX; //Start x position of ball
+float ballY; //Start y position of ball
+float robotSpeed; //Speed of robot
+float ballSpeed; //Speed of ball
+Vector3f interceptionPoint; // Point of interception of ball
+Vector3f initialPossition;
+int numberOfPoints = 0;
+ros::Publisher pub;
+ros::Publisher ballPublisher;
+ros::Publisher twistPublisher;
+ros::Time t1;
+ros::Time t2;
+
+void calculateSpeed()
 {
-	closestPoint = baseScan.points[0];
-	for(int i = 1; i < baseScan.points.size(); i++)
-	{
-		if(baseScan.points[i].x < closestPoint.x)
-		{
-			closestPoint = baseScan.points[i];
-		}
-	}	
-	//ROS_INFO("x = %f", closestPoint.x);
+	motionVector = Vector3f(point2.z - point1.z,
+	 point2.x - point1.x, 
+	 point2.y - point1.y);
+
+	ballXVelocity = motionVector.x() / timeBetween; //TODO calculate time
 }
 
-void publishTwist()
+std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32> points)
 {
-	pub.publish(twist);
+	std::vector< vector<geometry_msgs::Point32> > likeZ;
+	std::vector<geometry_msgs::Point32> uniqueZ;
+	std::vector<geometry_msgs::Point32> ball;
+	bool sameZ = false;
+
+	if(points.size() == 0)
+	{
+		geometry_msgs::Point32 point;
+		point.x = 0;
+		point.y =0;
+		point.z =0; 
+
+		points.push_back(point);
+	}
+
+	uniqueZ.push_back(points[0]);
+	likeZ.push_back(uniqueZ);
+
+	for(int i = 0; i < points.size(); i++)
+	{
+		for(int j = 0; j < likeZ.size(); j++)
+		{
+			if(likeZ[j][0].z == points[i].z)
+			{
+				sameZ = true;
+			}
+			if(sameZ)
+			{
+		 		std::vector<geometry_msgs::Point32> newUniqueZ = likeZ[j];
+		 		newUniqueZ.push_back(points[i]);
+		 		likeZ[j] = newUniqueZ;
+		 		sameZ = false;
+			}
+		}
+		
+	}
+
+	bool allBelow = false;
+	
+	
+	if(likeZ.size() > 0)
+	{
+		float closestZ = likeZ[0][0].z;
+		ball = likeZ[0];
+
+		for(int i = 0; i < likeZ.size(); i++)
+		{
+			for (int j = 0; j < likeZ[i].size(); j++)
+			{
+				if(likeZ[i][j].z < closestZ)
+				{
+					closestZ = likeZ[i][j].z;
+					ball = likeZ[i];
+					break;
+				}
+			}
+		}
+
+		return ball;
+	}
+	return points;
+}
+
+sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
+{
+
+    pcl::PCLPointCloud2 pcl_pc2;
+    pcl_conversions::toPCL(input,pcl_pc2);
+    pcl::PointCloud<pcl::PointXYZ>::Ptr temp_cloud(new pcl::PointCloud<pcl::PointXYZ>);
+    
+    pcl::fromPCLPointCloud2(pcl_pc2,*temp_cloud);
+    sensor_msgs::PointCloud cloud;
+    cloud.points.resize(temp_cloud->points.size());
+
+    std::vector<geometry_msgs::Point32> newPoints;
+
+    for(int i = 0; i < temp_cloud->points.size(); i++)
+    {
+    	geometry_msgs::Point32 point;
+    	point.x = temp_cloud->points[i].x;
+ 		point.y = temp_cloud->points[i].y;
+ 		point.z = temp_cloud->points[i].z;
+
+ 		if(point.x < 1 && point.x > -1)
+ 		{	
+ 			if(point.y > -.1 && point.y < .24) // set to ground height
+ 			{
+ 				if(point.z <5)
+ 				{
+ 					newPoints.push_back(point);
+ 				}
+ 			}
+ 		}
+ 	}
+
+ 	newPoints = findBall(newPoints);
+ 	cloud.points = newPoints;
+ 	return cloud;
+ }
+
+void findZPoint1(sensor_msgs::PointCloud cloud)
+{
+	point1 = cloud.points[0];
+	initialPossition = Vector3f(point1.z,point1.x,point1.y);
+}
+
+void findZPoint2(sensor_msgs::PointCloud cloud)
+{
+	point2 = cloud.points[0];
 }
 
 void turn()
 {
-	ros::Time time;
-	geometry_msgs::Vector3 ang;
+	ROS_INFO("ix =%f iy=%f",initialPossition.x(),initialPossition.y());
+	ROS_INFO("mx =%f my=%f",motionVector.x(),motionVector.y());
+	ROS_INFO("x =%f y=%f", interceptionPoint.x(),interceptionPoint.y());
 
-	geometry_msgs::Vector3 lin;
-	lin.x = 0;
-	lin.y = 0;
-	lin.z = 0;
+	float angle = atan2((interceptionPoint.y() - 0.0), (interceptionPoint.x() - 0.0));
+ 	float angular_speed = 2;
+	float relative_angle = abs(angle);
 
-	float angular_speed = 1*2*3.14/360;
-    float relative_angle = 90*2*3.14/360;
-	
-	ang.x = 0;
-	ang.y = 0;
- 	ang.z = -abs(angular_speed);
- 
-     
-    float t0 = time.now().toSec();
-    float current_angle = 0;
+	ROS_INFO("relative_angle=%f", angle); 
+
+	twist.linear.x = 0;
+	twist.linear.y = 0;
+	twist.linear.z = 0;
+
+	twist.angular.x = 0;
+	twist.angular.y = 0;
+
+	if(angle < 0)
+	{
+       twist.angular.z = angular_speed;
+    }
+    else
+    {
+       twist.angular.z = -1 * (angular_speed);
+    }
    
+	ros::Time t0 = ros::Time::now();
+    float current_angle = 0;
+
     while(current_angle < relative_angle)
     {
-        pub.publish(twist);
-       	float t1 = time.now().toSec();
-      	current_angle = angular_speed*(t1-t0);
-	}
+        ros::Time t1 = ros::Time::now();
+		ros::Duration diff=t1-t0;
+        current_angle = angular_speed * (diff.toSec());
+        twistPublisher.publish(twist);
+    }
 
+    twist.angular.z = 0;
+    twistPublisher.publish(twist);
+}
+
+void goStraight()
+{
+	float distance = sqrt(((interceptionPoint.x() - 0)*(interceptionPoint.x() - 0)) + ((interceptionPoint.y() -0)*(interceptionPoint.y() - 0)));
+	
+	twist.angular.x = 0;
+	twist.angular.y = 0;
 	twist.angular.z = 0;
-	pub.publish(twist);
 
-	publishTwist();
-}
+	twist.linear.y = 0;
+	twist.linear.z = 0;
 
-void go()
-{
-	while(distance2 != 0)
+	float currentDistanceTraveled = 0;
+ 	ros::Time t0 = ros::Time::now();
+	twist.linear.x = 0.5;
+
+	
+	while(currentDistanceTraveled < distance)
 	{
-		geometry_msgs::Vector3 ang;
-		ang.x = 0;
-		ang.y = 0;
-		ang.z = 0;
+		twistPublisher.publish(twist);
 
-		geometry_msgs::Vector3 lin;
-		ang.x = 1;
-		ang.y = 0;
-		ang.z = 0;
-
-		twist.angular = ang;
-		twist.linear = lin;
-		distance2 = distance2 - 10;
-		publishTwist();
-	}
-}
-
-void createTwistTest()
-{
-	turn();
-	go();	
-}
-
-void calculateSpeed()
-{
-	motionVector = Vector3f(closestPoint.x - closestPoint2.x,
-	 closestPoint.y - closestPoint2.y, 
-	 closestPoint.z - closestPoint2.z);
-
-	ballXVelocity = motionVector.x() / timeBetween;
-	distance2 = closestPoint2.x;
-	zLoc = closestPoint2.z;
-
-	//createTwistTest();
-}
-
-void findClosestInNewScan()
-{
-	for(int i = 0; i < threshold.points.size(); i++)
-	{
-		if(threshold.points[i].x > closestPoint.x)
-		{
-			somethingMovedCloser = true;
-			closestPoint = threshold.points[i];
-		}
-	}
-}
-
-void findCloserPoint(std::vector<geometry_msgs::Point32> points)
-{
-	somethingMovedCloser = false;
-	for(int i = 0; i < points.size(); i++)
-	{
-		if(points[i].x > closestPoint.x)
-		{
-			somethingMovedCloser = true;
-			closestPoint2 = points[i]; 
-		}
+		ros::Time t1 = ros::Time::now();
+		ros::Duration diff = t1-t0;
+		currentDistanceTraveled = .5 * (diff.toSec());
 	}
 	
+	twist.linear.x = 0;
+	twistPublisher.publish(twist);
 }
 
-sensor_msgs::PointCloud imageToCloud(sensor_msgs::Image image)
+void moveToIntecept()
 {
-  sensor_msgs::PointCloud cloud;
-  std::vector<geometry_msgs::Point32> points;
-
-  const int image_width = image.width;
-  const int image_height = image.height;
-  cloud.points.resize(image_width * image_height);
-
-  int i = 0;
-  for (int y = 0; y < image_height; ++y) {
-    for (int x = 0; x < image_width; ++x) {
-      uint16_t byte0 = image.data[2 * (x + y * image_width) + 0];
-      uint16_t byte1 = image.data[2 * (x + y * image_width) + 1];
-      if (!image.is_bigendian) {
-        std::swap(byte0, byte1);
-      }
-      
-      const uint16_t raw_depth = ((byte0 << 8) | byte1) & 0x7FF;
-      cloud.header.frame_id = "kinect_1";
-
-      geometry_msgs::Point32 point;
-
-      const float Z = 1.0 / (value1 + value2 * static_cast<float>(raw_depth));
-      point.z = Z * (static_cast<float>(x) - px) / fx;
-      point.y = Z * (static_cast<float>(y) - py) / fy;
-      point.x = Z;
-    
-      cloud.points[i] = point;
-      
-      i++;
-    }
-  }
-	return cloud;
+	turn();
+	goStraight();
 }
 
-void evaluateScan(sensor_msgs::Image image)
+float distance(float x1, float y1, float x2, float y2)
+{
+	return sqrt(pow(x2-x1,2) + pow(y2-y1,2));
+}
+
+void interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float ballVelocity, float robotVelocity){
+
+	float sin_Ball = (((robot.x()-ball.x()) * (heading.y()-ball.y())) - ((robot.y()-ball.y())*(heading.x()-ball.x())))/((robot-ball).norm() * (heading-ball).norm());
+
+	float sin_Robot = (ballVelocity / robotVelocity) * sin_Ball;
+	
+	// If the ball is moving too fast to intercept, print an error message and return
+	if(abs(sin_Robot) > 1){
+		ROS_INFO("Cannot Intercept Ball, too fast");
+		return;
+	}
+
+	// Calculate the point of interception
+	else{
+
+		float sin_interceptPoint = (sin_Robot * sqrt(1-pow(sin_Ball,2)) + sin_Ball * sqrt(1-pow(sin_Robot, 2)));
+		
+
+		float ballToDest = distance(ball.x(),ball.y(), robot.x(),robot.y()) * (sin_Robot / sin_interceptPoint); // The distance from the ball to the destination
+
+
+		// If the ball reaches the destination before it can be caught, print an error and return
+		if(ballToDest > distance(robot.x(),robot.y(),heading.x(),heading.y())){
+			ROS_INFO("Cannot Intercept Ball. Ball reaches destination before being caught by robot");
+			return;
+		}
+		//Calculate the point of interception
+		else{
+			interception_time = ballToDest/ballVelocity; // Gives the time of interception of the ball
+			interceptionPoint = ball + ballToDest *(heading-ball)/(heading - ball).norm(); // gives the point of interception of the ball
+		}
+	}
+	//ROS_INFO("Intercepted ball");
+	return;
+}
+
+void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 { 
-	//ROS_INFO("Scanning");
-	sensor_msgs::PointCloud cloud = imageToCloud(image);
-
+	sensor_msgs::PointCloud cloud;
+	cloud = toPointcloud(pcl2);
 	std::vector<geometry_msgs::Point32> points = cloud.points;
-	std::vector<geometry_msgs::Point32> newPoints;
-
-	if(buildup < buildupScanLimit) 
+	cloud.header = pcl2.header;
+	
+	if(numberOfBallScans < 2)
 	{
-		baseScan.points.insert(baseScan.points.end(), cloud.points.begin(), cloud.points.end());
+		if(numberOfPoints < 10)
+		{
+			numberOfPoints = cloud.points.size();
+			clouds.push_back(cloud);			
+		}
 
-	 	buildup++;
-	 	return;
+		if(numberOfPoints > 10)
+		{
+			numberOfBallScans++;
+		}
+
+		if(numberOfPoints > 10 && numberOfBallScans == 1)
+		{	
+			t1 = ros::Time::now();
+		}
+
+		if(numberOfPoints > 10 && numberOfBallScans == 2)
+		{
+			t2 = ros::Time::now();
+		}
+		
+		numberOfPoints = 0;
 	}
-
-	if(buildup == buildupScanLimit)
+	else if(numberOfBallScans == 2)
 	{
-		ROS_INFO("Base Scan Complete");
-		closestPointInBase();
-		buildup++;
+		ros::Duration diff = (t2-t1);
+		timeBetween = diff.toSec();
 
-		return;
-	}
+		findZPoint1(clouds[0]);
+		findZPoint2(clouds[1]);
 
-	if(somethingMovedCloser)
-	{
-		ROS_INFO("Something has Moved Closer");
-		findCloserPoint(points);
 		calculateSpeed();
-		
-		reset = 0;
-		return;
+		interceptBall(robot, initialPossition, motionVector, ballXVelocity, .5); //fix this
+		ROS_INFO("intceptionZ =%f",interceptionPoint.x());
+		moveToIntecept();
+		pub.publish(clouds[1]);
+		numberOfBallScans++;
 	}
 
-	for(int i = 0; i < points.size(); i++)
-	{
-		geometry_msgs::Point32 point;
-
-		point.x = points[i].x;
-		point.y = points[i].y;
-		point.z = points[i].z;
-		
-		newPoints.push_back(point);
-	}
-
-	threshold.points = newPoints;
-	reset = reset + 1;
-
-	if(reset == resetLimit)
-	{
-		buildup = 0;
-	}
-
-	findClosestInNewScan();
+	ballPublisher.publish(cloud);	
 }
 
 int main(int argc, char **argv) 
 {
-  ros::init(argc, argv, "BuffonBot"); // topic /camera/depth/points 
+  ros::init(argc, argv, "BuffonBot");
   ros::NodeHandle n;
- 
-  
- // cout << "Type \"goalie\" for Goalie Mode!\n or \nType\"avoid\" for Evasion Mode!\n\n";
-  //string input;
-  //cin >> input;
 
+  twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
+  pub =n.advertise<PointCloud>("/cloud", 1);
+  ballPublisher =n.advertise<PointCloud>("/ball", 1);
 
-  // if("goalie" == input)
-  // {
-  	ros::Subscriber sub = n.subscribe("/camera/depth/image", 1000, evaluateScan);
-  	pub = n.advertise<geometry_msgs::Twist>("/cmg_Imaged_vel_mux/input/navi", 1000);
-
-  	ros::spin();
-
-  
-
-
-  //}
-  // if("avoid" == input)
-  // {
-
-  // }
+  ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
+   	
+  ros::spin();
 
   return 0;
 }
