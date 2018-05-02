@@ -38,7 +38,7 @@ using sensor_msgs::Image;
 using std::cout;
 using std::vector;
 using namespace std;
-
+Vector3f robot = Vector3f(0,0,0);
 // Global Robot Parameters
 const float gRobotRadius = 0.18;
 const float gRobotHeight = 0.36;
@@ -85,20 +85,20 @@ float robotSpeed; //Speed of robot
 float ballSpeed; //Speed of ball
 Vector3f interceptionPoint; // Point of interception of ball
 Vector3f initialPossition;
-float angle;
 int numberOfPoints = 0;
 ros::Publisher pub;
+ros::Publisher ballPublisher;
 ros::Publisher twistPublisher;
 ros::Time t1;
 ros::Time t2;
 
 void calculateSpeed()
 {
-	motionVector = Vector3f(point2.x - point1.x,
-	 point2.y - point2.y, 
-	 point2.z - point1.z);
+	motionVector = Vector3f(point2.z - point1.z,
+	 point2.x - point1.x, 
+	 point2.y - point1.y);
 
-	ballXVelocity = motionVector.z() / timeBetween; //TODO calculate time
+	ballXVelocity = motionVector.x() / timeBetween; //TODO calculate time
 }
 
 std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32> points)
@@ -153,7 +153,6 @@ std::vector<geometry_msgs::Point32> findBall(std::vector<geometry_msgs::Point32>
 			{
 				if(likeZ[i][j].z < closestZ)
 				{
-					ROS_INFO("updating");
 					closestZ = likeZ[i][j].z;
 					ball = likeZ[i];
 					break;
@@ -188,7 +187,7 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 
  		if(point.x < 1 && point.x > -1)
  		{	
- 			if(point.y > 0 && point.y < .24) // set to ground height
+ 			if(point.y > -.15 && point.y < .24) // set to ground height
  			{
  				if(point.z <5)
  				{
@@ -200,7 +199,6 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 
  	
  	newPoints = findBall(newPoints);
- 	numberOfPoints = newPoints.size();
  	cloud.points = newPoints;
  	return cloud;
  }
@@ -209,7 +207,7 @@ sensor_msgs::PointCloud toPointcloud(sensor_msgs::PointCloud2 input)
 void findZPoint1(sensor_msgs::PointCloud cloud)
 {
 	point1 = cloud.points[0];
-	initialPossition = Vector3f(point1.x,point1.y,point1.z);
+	initialPossition = Vector3f(point1.z,point1.x,point1.y);
 }
 
 void findZPoint2(sensor_msgs::PointCloud cloud)
@@ -219,11 +217,16 @@ void findZPoint2(sensor_msgs::PointCloud cloud)
 
 void turn()
 {
-	angle = atan2((interceptionPoint.x() - 0.0), (interceptionPoint.y() - 0.0));
-	float speed = .5; // set the speed equal to max rotational velocity
+	ROS_INFO("ix =%f iy=%f",initialPossition.x(),initialPossition.y());
+	ROS_INFO("mx =%f my=%f",motionVector.x(),motionVector.y());
+	ROS_INFO("x =%f y=%f", interceptionPoint.x(),interceptionPoint.y());
+
+	float angle = atan2((interceptionPoint.y() - 0.0), (interceptionPoint.x() - 0.0));
  	float angular_speed = 2;
-	float relative_angle = angle;
-	
+	float relative_angle = abs(angle);
+
+	ROS_INFO("relative_angle=%f", angle); 
+
 	twist.linear.x = 0;
 	twist.linear.y = 0;
 	twist.linear.z = 0;
@@ -231,13 +234,13 @@ void turn()
 	twist.angular.x = 0;
 	twist.angular.y = 0;
 
-	if(angle < 90) // maybe? this determines which way it turns 
+	if(angle < 0) // maybe? this determines which way it turns 
 	{
-       twist.angular.z = -abs(angular_speed);
+       twist.angular.z = angular_speed;
     }
     else
     {
-       twist.angular.z = abs(angular_speed);
+       twist.angular.z = -(angular_speed);
     }
    
 	ros::Time t0 = ros::Time::now();
@@ -245,10 +248,10 @@ void turn()
 
     while(current_angle < relative_angle)
     {
-      	twistPublisher.publish(twist);
         ros::Time t1 = ros::Time::now();
 		ros::Duration diff=t1-t0;
         current_angle = angular_speed * (diff.toSec());
+        twistPublisher.publish(twist);
     }
 
     twist.angular.z = 0;
@@ -274,6 +277,7 @@ void goStraight()
 	while(currentDistanceTraveled < distance)
 	{
 		twistPublisher.publish(twist);
+
 		ros::Time t1 = ros::Time::now();
 		ros::Duration diff = t1-t0;
 		currentDistanceTraveled = .5 * (diff.toSec());
@@ -333,36 +337,36 @@ void interceptBall(Vector3f& robot, Vector3f& ball, Vector3f& heading, float bal
 void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 { 
 	sensor_msgs::PointCloud cloud;
+	cloud = toPointcloud(pcl2);
+	std::vector<geometry_msgs::Point32> points = cloud.points;
+	cloud.header = pcl2.header;
 	
 	if(numberOfBallScans < 2)
 	{
 		if(numberOfPoints < 10)
 		{
-			sensor_msgs::PointCloud cloud;
-			cloud = toPointcloud(pcl2);
-			std::vector<geometry_msgs::Point32> points = cloud.points;
-			cloud.header = pcl2.header;
-
-			pub.publish(cloud);
+			numberOfPoints = cloud.points.size();
+			clouds.push_back(cloud);			
 		}
 
-		if(numberOfPoints > 10 && numberOfBallScans == 0)
+		if(numberOfPoints > 10)
 		{
 			numberOfBallScans++;
-			t1 = ros::Time::now();
 		}
 
 		if(numberOfPoints > 10 && numberOfBallScans == 1)
-		{
-			numberOfBallScans++;
-			t2 = ros::Time::now();
+		{	
+			t1 = ros::Time::now();
 		}
 
+		if(numberOfPoints > 10 && numberOfBallScans == 2)
+		{
+			t2 = ros::Time::now();
+		}
+		
 		numberOfPoints = 0;
-
-		clouds.push_back(cloud);
 	}
-	else
+	else if(numberOfBallScans == 2)
 	{
 		ros::Duration diff = (t2-t1);
 		timeBetween = diff.toSec();
@@ -370,11 +374,15 @@ void evaluateScan(sensor_msgs::PointCloud2 pcl2)
 		findZPoint1(clouds[0]);
 		findZPoint2(clouds[1]);
 
-		Vector3f robot = Vector3f(0,0,0);
 		calculateSpeed();
-		interceptBall(robot, initialPossition, motionVector, ballSpeed, .5); //fix this
+		interceptBall(robot, initialPossition, motionVector, ballXVelocity, .5); //fix this
+		ROS_INFO("intceptionZ =%f",interceptionPoint.x());
 		moveToIntecept();
+		pub.publish(clouds[1]);
+		numberOfBallScans++;
 	}
+
+	ballPublisher.publish(cloud);	
 }
 
 int main(int argc, char **argv) 
@@ -384,6 +392,7 @@ int main(int argc, char **argv)
 
   twistPublisher = n.advertise<geometry_msgs::Twist>("/cmd_vel_mux/input/navi", 1000);
   pub =n.advertise<PointCloud>("/cloud", 1);
+  pub =n.advertise<PointCloud>("/ball", 1);
 
   ros::Subscriber sub = n.subscribe("/camera/depth/points", 1000, evaluateScan);
    	
