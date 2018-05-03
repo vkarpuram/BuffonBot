@@ -21,9 +21,12 @@ ROSBUILD_GENMSG()
 ROSBUILD_GENSRV()
 
 SET(libs roslib roscpp)
-
+find_package( PCL REQUIRED )
+include_directories(  ${PCL_INCLUDE_DIRS} )
+link_directories(${PCL_LIBRARY_DIRS})
+add_definitions(${PCL_DEFINITIONS})
 ROSBUILD_ADD_EXECUTABLE(buffon src/buffon.cpp)
-TARGET_LINK_LIBRARIES(buffon ${libs})
+TARGET_LINK_LIBRARIES(buffon ${libs} ${PCL_LIBRARIES})
 
 
 
@@ -34,7 +37,6 @@ TARGET_LINK_LIBRARIES(buffon ${libs})
 
 #common commands for building c++ executables and libraries
 #rosbuild_add_library(${PROJECT_NAME} src/example.cpp)
-#target_link_libraries(${PROJECT_NAME} another_library)
 #rosbuild_add_boost_directories()
 #rosbuild_link_boost(${PROJECT_NAME} thread)
 #rosbuild_add_executable(example examples/example.cpp)
